@@ -1,0 +1,10 @@
+[
+    {
+        "tipo_evento": "DISTURBIO",
+        "inicio_segundo": 5.26,
+        "precision_maxima": 0.9999955892562866,
+        "fin_segundo": 12.64,
+        "duracion_total": 7.38,
+        "nota": "Evento finalizado por t\u00e9rmino de video"
+    }
+]

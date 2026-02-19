@@ -1,0 +1,132 @@
+# Sistema de Detección de Posturas y Análisis de Comportamientos y acciones
+
+Este proyecto implementa un sistema basado en Flask, MediaPipe y Yolo para la detección de posturas humanas, análisis de comportamientos sospechosos y deteccion de acciones violentas en entornos multipersonas mediante visión por computadora.
+
+## Características Principales
+
+- 🖼️ **Análisis de Imágenes**: Detecta keypoints de postura humana en imágenes y genera datasets en formato JSON con las coordenadas.
+- 🎬 **Análisis de Videos**: Procesa videos para detectar comportamientos sospechosos, marcando el tiempo y categorizando los eventos. Procesa videos para detectar acciones violentas como una pelea o personas relizando actividades de protestas y marca el tiempo de la deteccion del evento y la accion.
+- 📷 **Detección en Tiempo Real**: Utiliza la cámara del dispositivo para detectar comportamientos sospechosos basados en la postura en tiempo real. Utiliza la cámara del equipo para detectar acciones violentas basados en la postura en tiempo real y movimientos del cuerpo.
+
+## Instalación
+
+### Primer paso
+- Instala las librerias que se encuentran dentro del archivo requirements.txt para poder inicializar el proyecto
+
+```bash
+pip install -r requirements.txt
+```
+
+### Requisitos del Sistema
+
+- Python 3.12.4
+- Flask
+- MediaPipe
+- Yolo
+- OpenCV
+- Navegador web moderno compatible con JavaScript (Chrome, Edge, Opera, Firefox)
+
+## Uso
+
+### Iniciar la Aplicación
+
+```bash
+python main.py
+```
+
+Tras ejecutarse, la aplicación estará disponible en `http://localhost:5000` (o el puerto especificado).
+
+### Interfaz Web
+
+La interfaz principal permite:
+
+1. **Cargar Imágenes**: 
+   - Sube una imagen para analizar posturas humanas
+   - Visualiza los keypoints detectados
+   - Descarga los datos en formato JSON
+
+2. **Cargar Videos**:
+   - Sube un video para analizar comportamientos
+   - Visualiza marcadores temporales de comportamientos sospechosos
+   - Obtén un informe categorizado de eventos detectados
+
+3. **Detección en Tiempo Real**:
+   - Permite el acceso a la cámara
+   - Muestra los análisis de postura en tiempo real
+   - Alerta de comportamientos sospechosos
+
+4. **Cargar Videos**:
+   - Sube un video para detectar acciones
+   - Visualiza marcadores temporales de acciones violentas (Peleas, disturbios)
+   - Obtén un informe categorizado de eventos detectados
+
+5. **Detección en Tiempo Real**:
+   - Permite el acceso a la cámara
+   - Muestra los análisis de las acciones en tiempo real
+   - Alerta de movimientos violentos definidos (Peleas, disturbios)
+
+## Estructura del Proyecto
+
+```
+proyecto-suspicious-detection/
+├── src/
+│   ├── main.py                  # Aplicación principal de Flask
+│   ├── requirements.txt         # Dependencias del proyecto
+│   ├── Resources/               # Archivos base del proyeco
+│   ├── model                    # Archivos de deteccion de posturas
+│   ├── models                   # Modelo entrenado LSTM de reconocimiento de acciones
+│   ├── static/                  # Archivos estáticos
+│   │   ├── assets/              # Recursos de imagen o video
+│   │   ├── scripts/             # Scripts JavaScript 
+│   │   ├── style/               # Estilos por plantilla html
+│   │   └── style.css            # Estilos globales
+│   ├── templates/               # Plantillas HTML
+│   ├── .env                     # Arhivo con data sensible
+│   └── README.md                # Información del proyecto
+```
+
+## Formato de Datos JSON
+
+El sistema genera archivos JSON con la siguiente estructura para los keypoints:
+
+```json
+{
+  "timestamp": "2023-05-03T14:30:00",
+  "keypoints": [
+    {"id": 0, "name": "nose", "x": 0.5, "y": 0.3, "z": 0.2, "visibility": 0.98},
+    {"id": 1, "name": "left_eye", "x": 0.45, "y": 0.27, "z": 0.21, "visibility": 0.96},
+    // ... otros keypoints
+  ],
+  "confidence": 0.89
+}
+```
+
+## Categorías de Comportamientos
+
+El sistema detecta y clasifica comportamientos y acciones en las siguientes categorías:
+
+- **Caídas**: Detecta cambios bruscos en la posición vertical
+- **Comportamiento Errático**: Movimientos rápidos e impredecibles
+- **Posturas Inusuales**: Configuraciones corporales fuera de lo común
+- **Proximidad Sospechosa**: Detección de acercamientos anómalos
+- **Acciones violentas de peleas**: Deteccion de brasos extendidos hacia otra persona
+- **Acciones violentas de protestas o disturbios**: Detección de brasos alzados en movimientos repetitivos
+
+## Contribución
+
+1. Haz un fork del proyecto
+2. Crea una rama para tu característica (`git checkout -b feature/nueva-caracteristica`)
+3. Realiza tus cambios y haz commit (`git commit -m 'Añadir nueva característica'`)
+4. Sube tus cambios (`git push origin feature/nueva-caracteristica`)
+5. Abre un Pull Request
+
+## Licencia
+
+Este proyecto está licenciado bajo la Licencia MIT - ver el archivo LICENSE para más detalles.
+
+## Reconocimientos
+
+- [MediaPipe](https://google.github.io/mediapipe/) por el framework de detección de posturas
+- [Flask](https://flask.palletsprojects.com/) por el framework web
+- [OpenCV](https://opencv.org/) por el procesamiento de imágenes y video
+- [Yolo](https://github.com/ultralytics/ultralytics) por el reconocimiento y deteccion de keypoints multipersonas

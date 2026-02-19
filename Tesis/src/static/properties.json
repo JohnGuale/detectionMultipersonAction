@@ -1,0 +1,21 @@
+{
+  "appTitle": "Mi Aplicación Web",
+  "header": {
+    "title": "Boi Pose | Detección accion video",
+    "subtitle": "Detección de Acciones Sujetas a Vigilancia"
+  },
+  "labels": {
+    "uploadVideo": "Cargar Video para Análisis",
+    "descriptionAction": "El sistema analizará el video en busca de acciones sujetas a vigilancias por comportamientos agresivos.",
+    "selectVideo": "Seleccionar archivo de video:",
+    "processButton": "Procesar video",
+    "videoLoad": "Video Cargado",
+    "aviso": "¡Aviso! Reducir o quitar el salto de frames aumenta la carga computacional y alarga los tiempos de espera.",
+    "procesoVideo": "Procesando video... Esto puede tomar algunos minutos dependiendo del tamaño del video.",
+    "descripcionResultado": "El sistema analiza patrones de movimiento y postura para identificar comportamientos sospechosos en tiempo real. Entre los que se encuentran:",
+    "resultados": "Los resultados se mostrarán al procesarse un video...",
+    "accionesDetectadas": "Acciones Detectadas",
+    "timeStamp": "Haga clic en un timestamp para saltar a ese momento en el video:",
+    "verResultados": "Visualizar Resultados"
+  }
+}

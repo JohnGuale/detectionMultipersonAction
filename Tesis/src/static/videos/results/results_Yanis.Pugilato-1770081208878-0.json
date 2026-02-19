@@ -1,0 +1,10 @@
+[
+    {
+        "tipo_evento": "PELEAR",
+        "inicio_segundo": 4.0,
+        "precision_maxima": 0.9999988079071045,
+        "fin_segundo": 17.2,
+        "duracion_total": 13.2,
+        "nota": "Evento finalizado por t\u00e9rmino de video"
+    }
+]

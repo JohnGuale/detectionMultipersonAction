@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Boi Pose | Detección en vivo</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles/live-detection.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles/header.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles/sidebar.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+</head>
+
+<body>
+    {% extends "navegacion.html" %}
+
+    {% block content %}
+    <div class="container_main">
+        <h1 id="page-title">Detección de Acciones Sujetas a Vigilancia en vivo</h1>
+
+        <!-- Configuración -->
+        <div class="card p-4">
+            <h4>Transmitir dispositivo para el Análisis</h4>
+            <p class="text-muted">El sistema analizará la cámara en busca de peleas o disturbios en tiempo real.</p>
+
+            <form id="upload-form">
+                <div id="device-dd-container" class="mb-3">
+                    <div class="input-group">
+                        <button class="btn btn-secondary dropdown-toggle" type="button" data-toggle="dropdown"
+                            aria-expanded="false" id="device-dd-btn" style="z-index: 0;">Dispositivo local</button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#">Dispositivo local</a></li>
+                            <li><a class="dropdown-item" href="#">Dispositivo remoto</a></li>
+                        </ul>
+                        <input type="text" id="device-url" class="form-control" disabled
+                            placeholder="Se usará la cámara local para el análisis">
+                    </div>
+                    <span id="validate-uri-info" style="display: none; margin-top: 7px; color: rgb(240, 83, 83);">
+                        La cadena ingresada no corresponde a una conexión HTTP o RTSP
+                    </span>
+                </div>
+
+                <div class="menu-btns">
+                    <button type="submit" class="btn btn-success" id="upload-btn">
+                        <i class="fa-solid fa-check"></i>Empezar detección en vivo</button>
+                    <div class="d-flex gap-2">
+                        <div class="dropdown1 d-inline-block" id="dd1">
+                            <button class="btn btn-info dropdown-toggle" type="button" id="dropdown1"
+                                data-toggle="dropdown" aria-expanded="false">
+                                <i class="fa-solid fa-sliders"></i> Analizar cada: 3 frames
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="dropdown1">
+                                <li><a class="dropdown-item" href="#">Sin saltos de frames</a></li>
+                                <li><a class="dropdown-item" href="#">1 frame</a></li>
+                                <li><a class="dropdown-item" href="#">2 frames</a></li>
+                                <li><a class="dropdown-item" href="#">3 frames (Por defecto)</a></li>
+                                <li><a class="dropdown-item" href="#">4 frames</a></li>
+                                <li><a class="dropdown-item" href="#">5 frames</a></li>
+                            </ul>
+                        </div>
+                        <div class="dropdown2 d-inline-block" id="dd3">
+                            <button class="btn btn-warning dropdown-toggle" type="button" id="dropdown2"
+                                data-toggle="dropdown" aria-expanded="false">
+                                <i class="fa-solid fa-male"></i> Estimación postural: 2D
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="dropdown2">
+                                <li><a class="dropdown-item" href="#">2D</a></li>
+                                <li><a class="dropdown-item" href="#">3D</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                    <button class="btn btn-secondary" id="reupload-btn">
+                        <i class="fa-solid fa-refresh"></i> Reiniciar proceso</button>
+                </div>
+
+                <div id="label-warning">
+                    <span class="d-flex mt-2 align-items-center small">
+                        <i class="fa-solid fa-exclamation-triangle" aria-hidden="true"></i>
+                        <label>¡Aviso! Reducir o quitar el salto de frames aumenta la carga computacional y alarga los
+                            tiempos de espera.</label>
+                    </span>
+                </div>
+            </form>
+        </div>
+
+        <!-- Video procesado -->
+        <div id="video-container">
+            <div class="card p-4 mt-4 video-preview">
+                <h4 class="video-label"><i class="fa-solid fa-spinner"></i>Cámara procesada</h4>
+                <label class="separator"></label>
+                <div class="ratio ratio-16x9 mt-2">
+                    <img id="img-processed-video" alt="video procesado" width="100%" height="auto">
+                    <div id="init-info">
+                        <p id="text-info"><i>Active la cámara para iniciar la detección en vivo</i></p>
+                        <img src="{{ url_for('static', filename='assets/video.gif') }}" width="150" height="160">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Resultados -->
+            <div class="card p-4 mt-4 video-preview">
+                <h4 class="video-label"><i class="fa-solid fa-info-circle"></i>Información y Resultado</h4>
+                <label class="separator"></label>
+                <div class="ratio ratio-16x9 mt-2 d-flex flex-column">
+                    <div class="sub-container">
+                        <div class="ir-info">
+                            <div id="ir-info-subcontainer">
+                                <label class="mt-2 small" id="labels.descripcionResultado"></label>
+                                <div id="labels-info" class="d-flex flex-column mt-1 small">
+                                    <label><i class="fa-solid fa-user"></i>Peleas</label>
+                                    <label><i class="fa-solid fa-users"></i>Disturbios</label>
+                                </div>
+                            </div>
+                            <img id="police-image" src="{{ url_for('static', filename='assets/police.jpg') }}"
+                                width="100" height="90">
+                            <div id="found-results">
+                                <div class="d-flex flex-column gap-2">
+                                    <label for="">Resultados encontrados:</label>
+                                    <div>
+                                        <i class="fa-solid fa-check"></i>
+                                        <span id="realtime-results-count">0</span> acción(es) detectada(s).
+                                        <div id="realtime-list" class="realtime-list-group" style="margin-left: 20px;">
+                                        </div>
+                                        <div id="realtime-spinner">
+                                            <div 
+                                                class="text-center d-flex justify-content-center align-items-center gap-2 mt-2 mb-2">
+                                                <div class="spinner-border spinner-border-sm" role="status">
+                                                    <span class="sr-only">Loading...</span>
+                                                </div>
+                                                <span class="small">Analizando...</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Botón para ver resumen -->
+                        <div class="d-flex flex-column justify-content-center mt-1">
+                            <label class="separator"></label>
+                            <label class="mt-2">Los resultados se mostrarán al procesarse un video...</label>
+                            <button id="view-results" type="button" class="btn btn-secondary mt-2"><i 
+			    class="fa-solid fa-search"></i>Visualizar Resultados</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal resumen -->
+        <div id="myModal" class="modal">
+        <div class="modal-content">
+            <span class="close"><i id="close-btn" class="fa-solid fa-times"></i></span>
+            <div class="modal-container">
+                <h4>Acciones Detectadas en Vivo</h4>
+            <!--<div class="d-flex flex-column justify-content-center align-items-center">
+                
+                <div class="ratio ratio-16x9 mt-2 d-flex flex-column">
+                <img id="snapshot-summary" alt="Resumen detección" width="100%" height="auto">
+                </div>
+            </div>-->
+            <label class="separator w-100"></label>
+            <div id="results-container" class="card p-4 mt-4">
+                <p>Resumen de acciones detectadas durante la sesión:</p>
+                <div id="live-summary-list" class="list-group"></div>
+            </div>
+            </div>
+        </div>
+        </div>
+
+    </div>
+    {% endblock %}
+
+    {% block scripts %}
+    <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js"
+        integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN"
+        crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.12.9/dist/umd/popper.min.js"
+        integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q"
+        crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/js/bootstrap.min.js"
+        integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl"
+        crossorigin="anonymous"></script>
+    <script src="{{ url_for('static', filename='scripts/toast-component.js') }}"></script>
+    <script src="{{ url_for('static', filename='scripts/live-action-multi-person.js') }}"></script>
+    <script src="{{ url_for('static', filename='scripts/navegacion.js') }}"></script>
+    <script src="{{ url_for('static', filename='scripts/config.js') }}"></script>
+    {% endblock %}
+</body>
+</html>

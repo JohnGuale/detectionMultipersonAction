@@ -1,0 +1,12 @@
+{
+  "label2id": {
+    "DISTURBIO": 0,
+    "NEUTRAL": 1,
+    "PELEAR": 2
+  },
+  "id2label": {
+    "0": "DISTURBIO",
+    "1": "NEUTRAL",
+    "2": "PELEAR"
+  }
+}
