@@ -1,5 +1,5 @@
 var deteccionesTiempoReal = [];
-var framesSkipToAnalyze = 3; // por defecto
+var visualMode = 'operativo'; // por defecto
 var selDimension = '2D';
 var detecciones = [];
 var filename = '';
@@ -72,8 +72,7 @@ function startSSE(filename) {
     let init = false;
     realtimeSpinner.style.display = 'block';
 
-    // Abrir SSE hacia Flask
-    source = new EventSource(`/evaluate-final/${filename}/${framesSkipToAnalyze}`);
+    source = new EventSource(`/evaluate-final/${filename}/${visualMode}`);
 
     source.onmessage = function (event) {
         if (event.data === "EOF") {
@@ -86,9 +85,9 @@ function startSSE(filename) {
             uploadBtn.disabled = false;
             videoFile.disabled = false;
 
-            // Cargar directamente los archivos generados por evaluate_final
-            const videoUrl = `/static/videos/results/processed_${filename.replace('.mp4','.webm')}`;
-            const jsonUrl = `/static/videos/results/results_${filename.replace('.mp4','.json')}`;
+            const timestamp = new Date().getTime();
+            const videoUrl = `/static/videos/results/processed_${filename.replace('.mp4','_out.mp4')}?t=${timestamp}`;
+            const jsonUrl = `/static/videos/results/results_${filename.replace('.mp4','.json')}?t=${timestamp}`;
 
             setProcessedVideo(videoUrl);
 
@@ -142,26 +141,39 @@ function startSSE(filename) {
             filename = file.name;
         }
     });
-
 reuploadBtn.addEventListener('click', function () {
-    // Reset UI
+    // 1. Resetear datos lógicos
     detecciones = [];
     deteccionesTiempoReal = [];
     timestampsList.innerHTML = '';
     realtime_list.innerHTML = '';
     realtime_count.innerText = '0';
     progressBar.innerHTML = '';
+    
+    // 2. Restablecer contenedor "Video Cargado" (Izquierda)
+    loadVideoInfo.style.display = 'block'; // Mostrar GIF de subida
+    videoPreview.style.display = 'none';   // Ocultar reproductor
+    videoPreview.src = '';                 // Limpiar fuente
+
+    // 3. Restablecer contenedor "Video Procesado" (Centro)
     imgProcessed.src = '';
-    initInfo.style.display = 'block';
+    imgProcessed.style.display = 'none';   // Ocultar la foto del último frame
+    initInfo.style.display = 'block';      // Mostrar GIF de la mano clicando
     progressContainer.style.display = 'none';
+
+    // 4. Restablecer contenedor "Información y Resultado" (Derecha)
     foundResults.style.display = 'none';
     irSubContainer.style.display = 'block';
+    policeImage.src = '/static/assets/police.jpg'; // Devolver al policía a su estado normal
+
+    // 5. Restablecer controles superiores
     skipframes_ddMenuButton.disabled = false;
     dimension_ddMenuButton.disabled = false;
     uploadBtn.disabled = false;
     videoFile.disabled = false;
+    reuploadBtn.style.display = 'none'; // Ocultar este mismo botón hasta que procese otro video
 
-    // 🔑 Limpieza de variables
+    // 6. Limpieza de variables de archivo
     filename = '';
     videoFile.value = '';
 
@@ -170,19 +182,19 @@ reuploadBtn.addEventListener('click', function () {
 });
 
 
-    skipframes_ddItems.forEach(item => {
+   skipframes_ddItems.forEach(item => {
         item.addEventListener('click', function (e) {
             e.preventDefault();
             let selectedText = this.textContent.trim();
-            if (!selectedText.includes('Sin saltos')) {
-                framesSkipToAnalyze = parseInt(selectedText.match(/\d+/)[0]);
-                if (selectedText.includes("defecto")) selectedText = selectedText.replace(' (Por defecto)', '');
-                skipframes_ddMenuButton.innerHTML = `<i class="fa-solid fa-sliders"></i> Analizar cada: ${selectedText}&nbsp;`;
-            } else {
-                framesSkipToAnalyze = 0;
-                skipframes_ddMenuButton.innerHTML = `<i class="fa-solid fa-sliders"></i> ${selectedText}&nbsp;`;
-            }
-            labelWarning.style.display = framesSkipToAnalyze < 3 ? 'block' : 'none';
+            
+            // Asignar el modo basado en la selección
+            if (selectedText.includes('Analítico')) visualMode = 'analitico';
+            else if (selectedText.includes('Debug')) visualMode = 'debug';
+            else visualMode = 'operativo';
+
+            // Actualizar el texto del botón
+            if (selectedText.includes("defecto")) selectedText = selectedText.replace(' (Por defecto)', '');
+            skipframes_ddMenuButton.innerHTML = `<i class="fa-solid fa-eye"></i> ${selectedText}&nbsp;`;
         });
     });
 
@@ -223,11 +235,11 @@ reuploadBtn.addEventListener('click', function () {
     }
 
     function updateProgressBar(percentage) {
+        console.log("DEBUG - Progreso recibido:", percentage, typeof percentage);
         if (percentage >= 100) document.getElementById('progress-text').style.display = 'none';
         progressBar.innerHTML = `<div class="progress-bar progress-bar-striped ${percentage >= 100 ? 'bg-success' : ''}" role="progressbar"
             style="width: ${percentage}%;" aria-valuenow="${percentage}" aria-valuemin="0" aria-valuemax="100">${percentage}%</div>`;
     }
-
     function displayDetections() {
     timestampsList.innerHTML = '';
     if (detecciones.length === 0) {

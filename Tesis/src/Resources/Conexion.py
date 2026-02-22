@@ -4,17 +4,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Configuración de la conexión
-host = os.getenv('DB_HOST')
+host = 'localhost'
 port = '5432'
-database = 'Operaciones2024'
-#database = 'postgres'
-user = os.getenv('DB_USER')
-password = os.getenv('DB_PASSWORD')
+database = 'multipleestimationdb'
+user = 'postgres'
+password = 'admin'
 encoding = 'utf8'
-
-print("Host:", host)
-print("Usuario:", user)
-print("Contraseña:", password)
 
 def get_connection():
     """Establece y devuelve una conexión a la base de datos PostgreSQL."""
@@ -28,7 +23,6 @@ def get_connection():
             client_encoding=encoding
         )
         print("Conexión exitosa")
-
         return connection
     except psycopg2.Error as e:
         print(f"Error en la conexión: {e.pgcode} - {e.pgerror}")

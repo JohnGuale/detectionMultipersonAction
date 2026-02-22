@@ -46,15 +46,12 @@
                         <div class="dropdown1 d-inline-block" id="dd1">
                             <button class="btn btn-info dropdown-toggle" type="button" id="dropdown1"
                                 data-toggle="dropdown" aria-expanded="false">
-                                <i class="fa-solid fa-sliders"></i> Analizar cada: 3 frames
+                                <i class="fa-solid fa-eye"></i> Modo Operativo (Por defecto)
                             </button>
                             <ul class="dropdown-menu" aria-labelledby="dropdown1">
-                                <li><a class="dropdown-item" href="#">Sin saltos de frames</a></li>
-                                <li><a class="dropdown-item" href="#">1 frame</a></li>
-                                <li><a class="dropdown-item" href="#">2 frames</a></li>
-                                <li><a class="dropdown-item" href="#">3 frames (Por defecto)</a></li>
-                                <li><a class="dropdown-item" href="#">4 frames</a></li>
-                                <li><a class="dropdown-item" href="#">5 frames</a></li>
+                                <li><a class="dropdown-item" href="#">Modo Operativo (Por defecto)</a></li>
+                                <li><a class="dropdown-item" href="#">Modo Analítico (Esqueletos)</a></li>
+                                <li><a class="dropdown-item" href="#">Modo Debug (Tracking)</a></li>
                             </ul>
                         </div>
                         <div class="dropdown2 d-inline-block" id="dd3">
@@ -72,13 +69,7 @@
                         <i class="fa-solid fa-refresh"></i> Reiniciar proceso</button>
                 </div>
 
-                <div id="label-warning">
-                    <span class="d-flex mt-2 align-items-center small">
-                        <i class="fa-solid fa-exclamation-triangle" aria-hidden="true"></i>
-                        <label>¡Aviso! Reducir o quitar el salto de frames aumenta la carga computacional y alarga los
-                            tiempos de espera.</label>
-                    </span>
-                </div>
+                <div id="label-warning" style="display: none;"></div>
             </form>
         </div>
 

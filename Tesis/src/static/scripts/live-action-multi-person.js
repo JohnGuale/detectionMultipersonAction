@@ -59,7 +59,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function goToDetection() {
         let init = false;
         let urlParam = selDeviceType === 'remote' ? fixUrlForGet(device_input.value) : 'local'; 
-        source = new EventSource(`/live-actions-remote/${urlParam}/${framesSkipToAnalyze}`);
+        source = new EventSource(`/live-actions-remote/${urlParam}/${visualMode}`);
 
         source.onmessage = function (event) {
             if (event.data === "EOF") {
@@ -148,15 +148,15 @@ document.addEventListener('DOMContentLoaded', function () {
         item.addEventListener('click', function (e) {
             e.preventDefault();
             let selectedText = this.textContent.trim();
-            if (!selectedText.includes('Sin saltos')) {
-                framesSkipToAnalyze = parseInt(selectedText.match(/\d+/)[0]);
-                if (selectedText.includes("defecto")) selectedText = selectedText.replace(' (Por defecto)', '');
-                skipframes_ddMenuButton.innerHTML = `<i class="fa-solid fa-sliders"></i> Analizar cada: ${selectedText}&nbsp;`;
-            } else {
-                framesSkipToAnalyze = 0;
-                skipframes_ddMenuButton.innerHTML = `<i class="fa-solid fa-sliders"></i> ${selectedText}&nbsp;`;
-            }
-            labelWarning.style.display = framesSkipToAnalyze < 3 ? 'block' : 'none';
+            
+            // Asignar el modo basado en la selección
+            if (selectedText.includes('Analítico')) visualMode = 'analitico';
+            else if (selectedText.includes('Debug')) visualMode = 'debug';
+            else visualMode = 'operativo';
+
+            // Actualizar el texto del botón
+            if (selectedText.includes("defecto")) selectedText = selectedText.replace(' (Por defecto)', '');
+            skipframes_ddMenuButton.innerHTML = `<i class="fa-solid fa-eye"></i> ${selectedText}&nbsp;`;
         });
     });
 
@@ -260,6 +260,7 @@ function updateRealTimeDetections(detections) {
         return url ? url.replaceAll('/', '{slash}') : null;
     }
     // --- Mostrar resumen en el modal ---
+// --- Mostrar resumen en el modal ---
 function showLiveSummary() {
     fetch('/static/videos/live/live_report.json')
         .then(response => response.json())
@@ -272,14 +273,31 @@ function showLiveSummary() {
             } else {
                 events.forEach(ev => {
                     let label = '';
-                    if (ev.tipo_evento === 'PELEAR') {
-                        label = `<i class="fa-solid fa-fist-raised"></i>Pelea detectada (duración ${ev.duracion_total}s, hora ${ev.hora_inicio} - ${ev.hora_fin}, día ${ev.fecha_inicio})`;
-                    } else if (ev.tipo_evento === 'DISTURBIO') {
-                        label = `<i class="fa-solid fa-exclamation-triangle"></i>Disturbio detectado (duración ${ev.duracion_total}s, hora ${ev.hora_inicio} - ${ev.hora_fin}, día ${ev.fecha_inicio})`;
-                    }
-                    summaryList.innerHTML += `<div class="list-group-item">${label}</div>`;
-                });
+                    let colorBorde = '';
 
+                    // 1. Crear el texto base según el evento
+                    if (ev.tipo_evento === 'PELEAR') {
+                        label = `<strong><i class="fa-solid fa-fist-raised" style="color: red;"></i> Pelea detectada</strong><br>
+                                 <small>Duración: ${ev.duracion_total}s | Hora: ${ev.hora_inicio} - ${ev.hora_fin} | Día: ${ev.fecha_inicio}</small>`;
+                        colorBorde = 'red';
+                    } else if (ev.tipo_evento === 'DISTURBIO') {
+                        label = `<strong><i class="fa-solid fa-exclamation-triangle" style="color: orange;"></i> Disturbio detectado</strong><br>
+                                 <small>Duración: ${ev.duracion_total}s | Hora: ${ev.hora_inicio} - ${ev.hora_fin} | Día: ${ev.fecha_inicio}</small>`;
+                        colorBorde = 'orange';
+                    }
+
+                    // 2. 🔑 NUEVO: Agregar la etiqueta de imagen si existe en el JSON
+                    let imagenHTML = '';
+                    if (ev.ruta_imagen) {
+                        imagenHTML = `<div style="text-align: center; margin-top: 10px;">
+                                        <img src="${ev.ruta_imagen}" alt="Captura del evento" 
+                                             style="max-width: 100%; max-height: 250px; border: 2px solid ${colorBorde}; border-radius: 5px;">
+                                      </div>`;
+                    }
+
+                    // 3. Unir el texto y la imagen en el contenedor
+                    summaryList.innerHTML += `<div class="list-group-item">${label}${imagenHTML}</div>`;
+                });
             }
 
             document.getElementById('myModal').style.display = "block";

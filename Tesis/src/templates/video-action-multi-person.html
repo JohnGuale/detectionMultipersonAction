@@ -33,13 +33,12 @@
                         <div class="dropdown1 d-inline-block" id="dd1">
                             <button class="btn btn-info dropdown-toggle" type="button" id="dropdown1"
                                 data-toggle="dropdown" aria-expanded="false">
-                                <i class="fa-solid fa-sliders"></i> Analizar cada: 3 frames
+                                <i class="fa-solid fa-eye"></i> Modo Operativo (Por defecto)
                             </button>
-                            <ul l class="dropdown-menu" aria-labelledby="dropdown1">
-                                <li><a class="dropdown-item" href="#">Sin saltos de frames</a></li>
-                                <li><a class="dropdown-item" href="#">3 frames (Por defecto)</a></li>
-                                <li><a class="dropdown-item" href="#">9 frames</a></li>
-                                <li><a class="dropdown-item" href="#">15 frames</a></li>
+                            <ul class="dropdown-menu" aria-labelledby="dropdown1">
+                                <li><a class="dropdown-item" href="#">Modo Operativo (Por defecto)</a></li>
+                                <li><a class="dropdown-item" href="#">Modo Analítico (Esqueletos)</a></li>
+                                <li><a class="dropdown-item" href="#">Modo Debug (Tracking)</a></li>
                             </ul>
                         </div>
                         <div class="dropdown2 d-inline-block" id="dd3">
@@ -56,14 +55,9 @@
                     <button class="btn btn-secondary" id="reupload-btn">
                         <i class="fa-solid fa-refresh"></i> Procesar nuevo video</button>
                 </div>
-                <div id="label-warning">
-                    <span class="d-flex mt-2 align-items-center small">
-                        <i class="fa-solid fa-exclamation-triangle" aria-hidden="true"></i>
-                        <label id="labels.aviso"></label>
-                    </span>
-                </div>
+                <div id="label-warning" style="display: none;"></div>
                 <div id="progress-container">
-                    <p id1="progress-text" id="labels.procesoVideo"></p>
+                    <p id="progress-text" id="labels.procesoVideo"></p>
                     <div class="progress"><!--Aqui se ingresa la barra de progreso desde js--></div>
                 </div>
         </div>
