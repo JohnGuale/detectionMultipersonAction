@@ -1,0 +1,11 @@
+[
+    {
+        "tipo_evento": "DISTURBIO",
+        "inicio_segundo": 1.28,
+        "precision_maxima": 1.0,
+        "ruta_imagen": "/static/videos/results/DISPRUEBA_ev_0_DISTURBIO_ID108.jpg",
+        "fin_segundo": 18.96,
+        "duracion_total": 17.68,
+        "nota": "Evento finalizado por t\u00e9rmino de video"
+    }
+]

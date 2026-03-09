@@ -1,7 +1,9 @@
 var deteccionesTiempoReal = [];
-var framesSkipToAnalyze = 3; // por defecto
+var framesSkipToAnalyze = 3;
 var selDeviceType = 'local';
 var detecciones = [];
+var source = null;
+var visualMode = 'operativo';
 
 document.addEventListener('DOMContentLoaded', function () {
     const uploadForm = document.getElementById('upload-form');
@@ -35,9 +37,13 @@ document.addEventListener('DOMContentLoaded', function () {
         e.preventDefault();
         if ((selDeviceType === 'remote' && validarURLMultimedia(device_input.value)) || selDeviceType === 'local') {
             goToDetection();
+            
             skipframes_ddMenuButton.disabled = true;
             dimension_ddMenuButton.disabled = true;
             uploadBtn.disabled = true;
+            device_ddMenuButton.disabled = true;
+            device_input.disabled = true;
+            
             irSubContainer.style.display = 'none';
             foundResults.style.display = 'block';
             showToast("Procesando dispositivo de captura", "info");
@@ -121,24 +127,43 @@ document.addEventListener('DOMContentLoaded', function () {
         location.reload();
     });*/
 
-    reuploadBtn.addEventListener('click', function () {
-        // Reset UI
+    // --- Reiniciar proceso (Reset Total) ---
+    reuploadBtn.addEventListener('click', function (e) {
+        e.preventDefault(); // 🔑 BLOQUEO ABSOLUTO: Evita que el formulario se reenvíe solo
+
+        if (source) {
+            source.close();
+            source = null;
+        }
+
         deteccionesTiempoReal = [];
         realtime_list.innerHTML = '';
         realtime_count.innerText = '0';
+        
         imgProcessed.src = '';
-        imgProcessed.style.display = 'none';   // 🔑 ocultar imagen
-        realtimeSpinner.style.display = 'none'; // 🔑 ocultar spinner
+        imgProcessed.style.display = 'none';   
         initInfo.style.display = 'block';
+
         foundResults.style.display = 'none';
         irSubContainer.style.display = 'block';
+        policeImage.src = '/static/assets/police.jpg'; // Volver al policía neutral
+        const descripcion = document.getElementById('labels.descripcionResultado');
+        if (descripcion) descripcion.innerText = ''; 
+        
+        realtimeSpinner.style.display = 'none';
+
         skipframes_ddMenuButton.disabled = false;
         dimension_ddMenuButton.disabled = false;
         uploadBtn.disabled = false;
-        device_input.disabled = false;
+        device_ddMenuButton.disabled = false;
 
-        if (source) source.close();
-        showToast("Listo para iniciar nueva detección en vivo", "success");
+        if (selDeviceType === 'local') {
+            device_input.disabled = true;
+        } else {
+            device_input.disabled = false;
+        }
+
+        showToast("Proceso reiniciado. Listo para nueva detección.", "success");
     });
 
 
@@ -188,14 +213,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    // --- Visualizar resultados (solo para videos procesados) ---
-    viewResultsBtn.addEventListener('click', function () {
-        if (!detecciones.length) {
-            showToast("No hay resultados para mostrar", "info");
-            return;
-        }
-        modal.style.display = "block";
-    });
 
     closeModalBtn.addEventListener('click', function () {
         closeModal();
@@ -262,7 +279,9 @@ function updateRealTimeDetections(detections) {
     // --- Mostrar resumen en el modal ---
 // --- Mostrar resumen en el modal ---
 function showLiveSummary() {
-    fetch('/static/videos/live/live_report.json')
+    const timestamp = new Date().getTime();
+
+    fetch(`/static/videos/live/live_report.json?t=${timestamp}`)
         .then(response => response.json())
         .then(events => {
             const summaryList = document.getElementById('live-summary-list');
@@ -275,7 +294,6 @@ function showLiveSummary() {
                     let label = '';
                     let colorBorde = '';
 
-                    // 1. Crear el texto base según el evento
                     if (ev.tipo_evento === 'PELEAR') {
                         label = `<strong><i class="fa-solid fa-fist-raised" style="color: red;"></i> Pelea detectada</strong><br>
                                  <small>Duración: ${ev.duracion_total}s | Hora: ${ev.hora_inicio} - ${ev.hora_fin} | Día: ${ev.fecha_inicio}</small>`;
@@ -285,17 +303,14 @@ function showLiveSummary() {
                                  <small>Duración: ${ev.duracion_total}s | Hora: ${ev.hora_inicio} - ${ev.hora_fin} | Día: ${ev.fecha_inicio}</small>`;
                         colorBorde = 'orange';
                     }
-
-                    // 2. 🔑 NUEVO: Agregar la etiqueta de imagen si existe en el JSON
                     let imagenHTML = '';
                     if (ev.ruta_imagen) {
                         imagenHTML = `<div style="text-align: center; margin-top: 10px;">
-                                        <img src="${ev.ruta_imagen}" alt="Captura del evento" 
+                                        <img src="${ev.ruta_imagen}?t=${timestamp}" alt="Captura del evento" 
                                              style="max-width: 100%; max-height: 250px; border: 2px solid ${colorBorde}; border-radius: 5px;">
                                       </div>`;
                     }
 
-                    // 3. Unir el texto y la imagen en el contenedor
                     summaryList.innerHTML += `<div class="list-group-item">${label}${imagenHTML}</div>`;
                 });
             }
@@ -303,7 +318,6 @@ function showLiveSummary() {
             document.getElementById('myModal').style.display = "block";
         });
 }
-
 
 // --- Vincular botón "Visualizar Resumen" ---
 viewResultsBtn.addEventListener('click', function () {

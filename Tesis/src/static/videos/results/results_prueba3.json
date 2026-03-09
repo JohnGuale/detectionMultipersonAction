@@ -1,0 +1,11 @@
+[
+    {
+        "tipo_evento": "DISTURBIO",
+        "inicio_segundo": 1.44,
+        "precision_maxima": 1.0,
+        "ruta_imagen": "/static/videos/results/prueba3_ev_0_DISTURBIO.jpg",
+        "fin_segundo": 10.72,
+        "duracion_total": 9.28,
+        "nota": "Evento finalizado por t\u00e9rmino de video"
+    }
+]

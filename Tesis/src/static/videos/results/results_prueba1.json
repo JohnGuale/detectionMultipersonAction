@@ -1,0 +1,29 @@
+[
+    {
+        "tipo_evento": "DISTURBIO",
+        "inicio_segundo": 3.68,
+        "precision_maxima": 1.0,
+        "ruta_imagen": "/static/videos/results/prueba1_ev_0_DISTURBIO_ID556.jpg",
+        "fin_segundo": 17.52,
+        "duracion_total": 13.84,
+        "nota": "Evento finalizado por t\u00e9rmino de video"
+    },
+    {
+        "tipo_evento": "DISTURBIO",
+        "inicio_segundo": 3.68,
+        "precision_maxima": 1.0,
+        "ruta_imagen": "/static/videos/results/prueba1_ev_0_DISTURBIO_ID557.jpg",
+        "fin_segundo": 17.52,
+        "duracion_total": 13.84,
+        "nota": "Evento finalizado por t\u00e9rmino de video"
+    },
+    {
+        "tipo_evento": "DISTURBIO",
+        "inicio_segundo": 7.0,
+        "precision_maxima": 1.0,
+        "ruta_imagen": "/static/videos/results/prueba1_ev_0_DISTURBIO_ID559.jpg",
+        "fin_segundo": 17.52,
+        "duracion_total": 10.52,
+        "nota": "Evento finalizado por t\u00e9rmino de video"
+    }
+]

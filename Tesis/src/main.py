@@ -3,7 +3,6 @@ from fileinput import filename
 from genericpath import exists
 import io
 import subprocess
-#import uuid
 import torch
 import torch.nn as nn
 import numpy as np
@@ -23,7 +22,6 @@ from shutil import copyfile
 from PIL import Image
 from moviepy.video.io.VideoFileClip import VideoFileClip
 import psycopg2
-#from requests import patch
 from werkzeug.utils import secure_filename
 
 from Resources.QueriesProcedures import (validate_login_query,
@@ -69,14 +67,18 @@ conn = get_connection()
 LABELS = ["DISTURBIO", "NEUTRAL", "PELEAR"]
 device = "cpu"
 pose_model = YOLO("Tesis/yolov8s-pose.pt")
-pose_model.to(device) # Asegúrate de que esta línea se ejecute
+pose_model.to(device)
 
-WINDOW_SIZE = int(os.getenv("WINDOW_SIZE", 32))
-TH_PELEAR = float(os.getenv("TH_PELEAR", 0.75))
-TH_DISTURBIO = float(os.getenv("TH_DISTURBIO", 0.90))
-MIN_EVENT_PELEAR = int(os.getenv("MIN_EVENT_PELEAR", 6))
-MIN_EVENT_DISTURBIO = int(os.getenv("MIN_EVENT_DISTURBIO", 10))
-END_EVENT_WINDOWS = int(os.getenv("END_EVENT_WINDOWS", 8))
+
+# =========================
+# PARÁMETROS DEL SISTEMA
+# =========================
+WINDOW_SIZE = 32
+TH_PELEAR = 0.75      
+TH_DISTURBIO = 0.92   
+MIN_EVENT_PELEAR = 25     
+MIN_EVENT_DISTURBIO = 60  
+END_EVENT_WINDOWS = 20    
 
 class ActionLSTM(nn.Module):
     def __init__(self, input_size=68, hidden_size=128, num_classes=3):
@@ -133,16 +135,48 @@ def run_lstm_detection_frame(frame):
     print("Predicción:", best_label, "Confianza:", best_prob)
 
 
-    # exigir confianza alta
     if best_prob < 0.9:  
         return []
 
     return [best_label]
 
-def procesar_eventos(frame, fps, frame_idx, buffers, state_data, device, model, id2label, reporte_eventos, video_name, out_clip, w_vid, h_vid, mode="operativo"):
+def consolidar_eventos(eventos):
+    if not eventos: return []
+    
+    eventos_ordenados = sorted(eventos, key=lambda x: x.get("inicio_segundo", 0))
+    consolidados = []
+    
+    for ev in eventos_ordenados:
+        if not consolidados:
+            consolidados.append(dict(ev))
+            continue
+        
+        ultimo = consolidados[-1]
+        
+
+        margen_tolerancia = 2.0
+        inicio_actual = ev.get("inicio_segundo", 0)
+        fin_ultimo = ultimo.get("fin_segundo", inicio_actual)
+        
+        if ev["tipo_evento"] == ultimo["tipo_evento"] and inicio_actual <= (fin_ultimo + margen_tolerancia):
+            ultimo["fin_segundo"] = max(ultimo.get("fin_segundo", 0), ev.get("fin_segundo", 0))
+            ultimo["duracion_total"] = round(ultimo["fin_segundo"] - ultimo["inicio_segundo"], 2)
+            if "hora_fin" in ev: ultimo["hora_fin"] = ev["hora_fin"]
+            if "fecha_fin" in ev: ultimo["fecha_fin"] = ev["fecha_fin"]
+            if float(ev.get("precision_maxima", 0)) > float(ultimo.get("precision_maxima", 0)):
+                ultimo["precision_maxima"] = float(ev["precision_maxima"])
+                ultimo["ruta_imagen"] = ev.get("ruta_imagen", ultimo.get("ruta_imagen"))
+        else:
+            consolidados.append(dict(ev))
+            
+    return consolidados
+
+def procesar_eventos(frame, fps, frame_idx, buffers, states_history, device, model, id2label, reporte_eventos, video_name, out_clip, w_vid, h_vid, mode="operativo"):
+
+    person_detected = False
     res = pose_model.track(frame, persist=True, verbose=False, tracker="bytetrack.yaml")
     
-    person_detected = False
+    current_ids = []
 
     if res and res[0].keypoints is not None and res[0].boxes is not None and res[0].boxes.id is not None:
         person_detected = True
@@ -152,11 +186,29 @@ def procesar_eventos(frame, fps, frame_idx, buffers, state_data, device, model, 
         boxes = res[0].boxes.xyxy.cpu().numpy()
 
         for pid, kp, cf, box in zip(ids, kps, confs, boxes):
+            current_ids.append(pid) 
+            
+
+            if pid not in states_history:
+                states_history[pid] = {
+                    "state": "NEUTRAL",
+                    "event_label": None,
+                    "history": deque(maxlen=64), 
+                    "end_counter": 0,
+                    "current_event": None
+                }
+            
+            person_state = states_history[pid]
+            
             if kp.shape[0] != 17 or np.mean(cf) < 0.5: continue
             buffers[pid].append(kp)
-            if len(buffers[pid]) < WINDOW_SIZE: continue
+            if len(buffers[pid]) < WINDOW_SIZE: 
+                x1, y1, x2, y2 = box.astype(int)
+                if mode == "operativo":
+                    cv.rectangle(frame, (x1,y1), (x2,y2), (0,255,0), 2)
+                    cv.putText(frame, "NEUTRAL", (x1, y1-10), cv.FONT_HERSHEY_SIMPLEX, 0.8, (0,255,0), 2)
+                continue
 
-            # Preprocesamiento LSTM
             seq = np.stack(buffers[pid]).astype(np.float32)
             seq -= seq[:, 0:1, :]
             max_d = np.linalg.norm(seq.reshape(seq.shape[0], -1), axis=1).max()
@@ -172,66 +224,100 @@ def procesar_eventos(frame, fps, frame_idx, buffers, state_data, device, model, 
             pred_id = int(np.argmax(probs))
             pred_label, prob = id2label[pred_id], probs[pred_id]
 
-           # --- Máquina de estados ---
-            if state_data["state"] == "NEUTRAL":
-                if (pred_label == "PELEAR" and prob >= TH_PELEAR) or (pred_label == "DISTURBIO" and prob >= TH_DISTURBIO):
-                    state_data["event_counter"] += 1
-                    if state_data["event_counter"] >= (MIN_EVENT_PELEAR if pred_label == "PELEAR" else MIN_EVENT_DISTURBIO):
-                        state_data["state"] = "EVENTO"
-                        state_data["event_label"] = pred_label
+
+            is_live = (video_name == "live_stream")
+
+            EVAL_WINDOW = 15 if is_live else 45
+            
+            MIN_P = 8 if is_live else 30
+            MIN_D = 10 if is_live else 38 
+            
+            END_W = 6 if is_live else 30
+
+            ESCAPE_D = 4 if is_live else 25
+
+            person_state["history"].append((pred_label, float(prob)))
+
+            historial_reciente = list(person_state["history"])[-EVAL_WINDOW:]
+
+            pelear_frames = sum(1 for lbl, p in historial_reciente if lbl == "PELEAR" and p >= 0.85)
+            disturbio_frames = sum(1 for lbl, p in historial_reciente if lbl == "DISTURBIO" and p >= 0.92) 
+            
+            calma_frames = len(historial_reciente) - pelear_frames - disturbio_frames
+
+            sustained_action = person_state.get("event_label") or "NEUTRAL"
+
+            if sustained_action == "NEUTRAL":
+                if pelear_frames >= MIN_P: sustained_action = "PELEAR"
+                elif disturbio_frames >= MIN_D: sustained_action = "DISTURBIO"
+            
+            elif sustained_action == "PELEAR":
+                if calma_frames >= END_W: sustained_action = "NEUTRAL"
+                elif disturbio_frames >= MIN_D: sustained_action = "DISTURBIO"
+                    
+            elif sustained_action == "DISTURBIO":
+
+                if calma_frames >= ESCAPE_D: sustained_action = "NEUTRAL"
+                elif pelear_frames >= MIN_P: sustained_action = "PELEAR"
+  
+            if person_state["state"] == "NEUTRAL":
+                if sustained_action in ["PELEAR", "DISTURBIO"]:
+                    person_state["state"] = "EVENTO"
+                    person_state["event_label"] = sustained_action
+                    
+                    img_filename = f"{video_name}_ev_{len(reporte_eventos)}_{sustained_action}_ID{pid}.jpg"
+                    save_dir = os.path.join(app.static_folder, "videos", "live") if video_name == "live_stream" else app.config['RESULT_FOLDER']
+                    os.makedirs(save_dir, exist_ok=True)
+                    
+                    frame_foto = frame.copy()
+                    x1_f, y1_f, x2_f, y2_f = box.astype(int)
+                    color_f = (0,0,255) if sustained_action == "PELEAR" else (0,165,255)
+                    cv.rectangle(frame_foto, (x1_f,y1_f), (x2_f,y2_f), color_f, 2)
+                    cv.putText(frame_foto, f"{sustained_action} ({prob:.2f})", (x1_f+5, y1_f+25), cv.FONT_HERSHEY_SIMPLEX, 0.6, color_f, 2)
+                    cv.imwrite(os.path.join(save_dir, img_filename), frame_foto)
+                    
+                    ruta_web_img = f"/static/videos/live/{img_filename}" if video_name == "live_stream" else f"/static/videos/results/{img_filename}"
+                    
+
+                    frames_esperados = MIN_P if sustained_action == "PELEAR" else MIN_D
+                    inicio_real_frames = max(0, frame_idx - frames_esperados)
+
+                    person_state["current_event"] = {
+                        "tipo_evento": sustained_action,
+                        "inicio_segundo": round(inicio_real_frames/fps, 2),
+                        "precision_maxima": float(prob),
+                        "ruta_imagen": ruta_web_img,
+                        "hora_inicio": datetime.now().strftime("%H:%M:%S"),
+                        "fecha_inicio": datetime.now().strftime("%Y-%m-%d")
+                    }
+
+            else: 
+                if sustained_action != person_state["event_label"]:
+                    person_state["end_counter"] += 1
+                    
+                    if person_state["end_counter"] >= END_W:
+                        person_state["current_event"]["fin_segundo"] = round(frame_idx/fps, 2)
+                        person_state["current_event"]["duracion_total"] = round(frame_idx/fps - person_state["current_event"]["inicio_segundo"], 2)
+                        person_state["current_event"]["hora_fin"] = datetime.now().strftime("%H:%M:%S")
+                        person_state["current_event"]["fecha_fin"] = datetime.now().strftime("%Y-%m-%d")
                         
-                        #TOMAR CAPTURA: Crear el nombre y la ruta de la imagen
-                        img_filename = f"{video_name}_ev_{len(reporte_eventos)}_{pred_label}.jpg"
+                        reporte_eventos.append(person_state["current_event"])
                         
-                        # Guarda en la carpeta correcta dependiendo si es video o en vivo
-                        if video_name == "live_stream":
-                            save_dir = os.path.join(app.static_folder, "videos", "live")
-                        else:
-                            save_dir = app.config['RESULT_FOLDER']
-                            
-                        os.makedirs(save_dir, exist_ok=True)
-                        
-                        # Pre-dibujar la caja SOLO para la foto del reporte
-                        frame_foto = frame.copy()
-                        x1_f, y1_f, x2_f, y2_f = box.astype(int)
-                        color_f = (0,0,255) if pred_label == "PELEAR" else (0,165,255)
-                        cv.rectangle(frame_foto, (x1_f,y1_f), (x2_f,y2_f), color_f, 2)
-                        cv.putText(frame_foto, f"{pred_label} ({prob:.2f})", (x1_f+5, y1_f+25), cv.FONT_HERSHEY_SIMPLEX, 0.6, color_f, 2)
-                        
-                        cv.imwrite(os.path.join(save_dir, img_filename), frame_foto)
-                        
-                        ruta_web_img = f"/static/videos/live/{img_filename}" if video_name == "live_stream" else f"/static/videos/results/{img_filename}"
-                        state_data["current_event"] = {
-                            "tipo_evento": pred_label,
-                            "inicio_segundo": round(frame_idx/fps, 2),
-                            "precision_maxima": float(prob),
-                            "ruta_imagen": ruta_web_img 
-                        }
+                        states_history[pid] = {"state": "NEUTRAL", "event_label": None, "history": deque(maxlen=64), "end_counter": 0, "current_event": None}
+                        person_state = states_history[pid]
                 else:
-                    state_data["event_counter"] = max(0, state_data["event_counter"] - 1)
-            else:
-                if pred_label != state_data["event_label"]:
-                    state_data["end_counter"] += 1
-                    if state_data["end_counter"] >= END_EVENT_WINDOWS:
-                        state_data["current_event"]["fin_segundo"] = round(frame_idx/fps, 2)
-                        state_data["current_event"]["duracion_total"] = round(frame_idx/fps - state_data["current_event"]["inicio_segundo"], 2)
-                        reporte_eventos.append(state_data["current_event"])
-                        state_data = {"state": "NEUTRAL", "event_label": None, "event_counter": 0, "end_counter": 0, "current_event": None}
-                        
-                else:
-                    state_data["end_counter"] = max(0, state_data["end_counter"] - 1)
-                    if prob > state_data["current_event"]["precision_maxima"]:
-                        state_data["current_event"]["precision_maxima"] = float(prob)
+                    person_state["end_counter"] = 0 
+                    if float(prob) > person_state["current_event"]["precision_maxima"]:
+                        person_state["current_event"]["precision_maxima"] = float(prob)
 
             x1, y1, x2, y2 = box.astype(int)
             
-
-            if state_data["state"] == "EVENTO":
-                display_label = state_data["event_label"]
+            if person_state["state"] == "EVENTO":
+                display_label = person_state["event_label"]
                 color = (0, 0, 255) if display_label == "PELEAR" else (0, 165, 255)
             else:
                 display_label = "NEUTRAL"
-                color = (0, 255, 0) # Verde constante
+                color = (0, 255, 0) 
                 
             display_prob = 0.0
             for k, v in id2label.items():
@@ -239,15 +325,12 @@ def procesar_eventos(frame, fps, frame_idx, buffers, state_data, device, model, 
                     display_prob = float(probs[k])
                     break
 
-            # Conexiones óseas para el esqueleto
             SKELETON = [(0, 1), (0, 2), (1, 3), (2, 4), (5, 6), (5, 7), (7, 9), (6, 8), (8, 10), (5, 11), (6, 12), (11, 12), (11, 13), (13, 15), (12, 14), (14, 16)]
 
-            # Modo Operativo
             if mode == "operativo":
                 cv.rectangle(frame, (x1,y1), (x2,y2), color, 2)
                 cv.putText(frame, f"{display_label} ({display_prob*100:.0f}%)", (x1, y1-10), cv.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
 
-            # Modo Analítico y Debug (Dibujar Esqueleto)
             if mode in ["analitico", "debug"]:
                 for p1, p2 in SKELETON:
                     x1_kp, y1_kp = kp[p1]
@@ -258,12 +341,10 @@ def procesar_eventos(frame, fps, frame_idx, buffers, state_data, device, model, 
                     if kx > 0 and ky > 0:
                         cv.circle(frame, (int(kx), int(ky)), 4, (0, 255, 0), -1)
 
-            # Modo Analítico
             if mode == "analitico":
                 cv.rectangle(frame, (x1,y1), (x2,y2), color, 2)
                 cv.putText(frame, f"{display_label}", (x1, y1-10), cv.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
 
-            # Modo Debug 
             if mode == "debug":
                 L = 40; t = 4
                 cv.line(frame, (x1, y1), (x1 + L, y1), color, t); cv.line(frame, (x1, y1), (x1, y1 + L), color, t)
@@ -280,7 +361,6 @@ def procesar_eventos(frame, fps, frame_idx, buffers, state_data, device, model, 
                 cv.putText(frame, "LSTM Output:", (x2 + 10, telemetry_y), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                 telemetry_y += 30
                 
-
                 for id_lbl, lbl_name in id2label.items():
                     p_val = probs[id_lbl] * 100
                     c_text = (0, 255, 0) if lbl_name == "NEUTRAL" else (0, 165, 255) if lbl_name == "DISTURBIO" else (0, 0, 255)
@@ -292,15 +372,19 @@ def procesar_eventos(frame, fps, frame_idx, buffers, state_data, device, model, 
                     for i in range(1, len(historial)):
                         cv.line(frame, historial[i-1], historial[i], (255, 0, 255), 3) 
 
-    if not person_detected and state_data["state"] == "EVENTO":
-        state_data["end_counter"] += 1
-        if state_data["end_counter"] >= END_EVENT_WINDOWS:
-            state_data["current_event"]["fin_segundo"] = round(frame_idx/fps, 2)
-            state_data["current_event"]["duracion_total"] = round(frame_idx/fps - state_data["current_event"]["inicio_segundo"], 2)
-            reporte_eventos.append(state_data["current_event"])
-            state_data = {"state": "NEUTRAL", "event_label": None, "event_counter": 0, "end_counter": 0, "current_event": None}
 
-    return frame, state_data, reporte_eventos, out_clip
+    for p_id, state_info in states_history.items():
+        if p_id not in current_ids and state_info["state"] == "EVENTO":
+            state_info["end_counter"] += 1
+            if state_info["end_counter"] >= END_EVENT_WINDOWS:
+                state_info["current_event"]["fin_segundo"] = round(frame_idx/fps, 2)
+                state_info["current_event"]["duracion_total"] = round(frame_idx/fps - state_info["current_event"]["inicio_segundo"], 2)
+                reporte_eventos.append(state_info["current_event"])
+                
+                states_history[p_id] = {"state": "NEUTRAL", "event_label": None, "event_counter": 0, "end_counter": 0, "current_event": None}
+                states_history[p_id] = {"state": "NEUTRAL", "event_label": None, "history": deque(maxlen=64), "end_counter": 0, "current_event": None}
+
+    return frame, states_history, reporte_eventos, out_clip
 
 
 def evaluar_video(video_path, model, id2label, output_dir, show=False):
@@ -339,7 +423,6 @@ def evaluar_video(video_path, model, id2label, output_dir, show=False):
                 buffers[pid].append(kp)
                 if len(buffers[pid]) < WINDOW_SIZE: continue
 
-                # Preprocesamiento
                 seq = np.stack(buffers[pid]).astype(np.float32)
                 seq -= seq[:, 0:1, :]
                 max_d = np.linalg.norm(seq.reshape(seq.shape[0], -1), axis=1).max()
@@ -385,7 +468,7 @@ def evaluar_video(video_path, model, id2label, output_dir, show=False):
 
     cap.release()
 
-    # Cerrar evento pendiente
+
     if state == "EVENTO" and current_event_data:
         current_event_data["fin_segundo"] = timestamp_sec
         current_event_data["duracion_total"] = round(timestamp_sec - current_event_data["inicio_segundo"], 2)
@@ -442,7 +525,7 @@ class VideoProcessorThread(threading.Thread):
         writer_async.start()
 
         buffers = defaultdict(lambda: deque(maxlen=WINDOW_SIZE))
-        state_data = {"state": "NEUTRAL", "event_label": None, "event_counter": 0, "end_counter": 0, "current_event": None}
+        self.states_history = {} 
         video_name = os.path.basename(self.input_path).split('.')[0]
         event_clip = None 
 
@@ -452,27 +535,30 @@ class VideoProcessorThread(threading.Thread):
             if not ret: break
             frame_idx += 1
 
-            frame_proc, state_data, self.reporte_eventos, event_clip = procesar_eventos(
-                frame, fps, frame_idx, buffers, state_data, device, lstm_model, id2label, 
-                self.reporte_eventos, video_name, event_clip, v_width, v_height, self.mode
+            frame_proc, self.states_history, self.reporte_eventos, event_clip = procesar_eventos(
+            frame, fps, frame_idx, buffers, self.states_history, device, lstm_model, id2label, 
+            self.reporte_eventos, video_name, event_clip, v_width, v_height, self.mode
             )
             
             writer_async.queue.put(frame_proc)
             self.progress = int((frame_idx / total_frames) * 100)
 
+            active_detections = list(set([info["event_label"] for info in self.states_history.values() if info["state"] == "EVENTO"]))
+
             preview = cv.resize(frame_proc, (640, int(640 * (v_height/v_width))))
             with self.data_lock:
                 self.latest_data = {
                     "progress": self.progress,
-                    "frame": preview, # Pasamos la matriz cruda
-                    "detections": [state_data["event_label"]] if state_data["state"] == "EVENTO" else []
+                    "frame": preview, 
+                    "detections": active_detections 
                 }
 
-        if state_data["state"] == "EVENTO" and state_data["current_event"]:
-            state_data["current_event"]["fin_segundo"] = round(frame_idx/fps, 2)
-            state_data["current_event"]["duracion_total"] = round((frame_idx/fps) - state_data["current_event"]["inicio_segundo"], 2)
-            state_data["current_event"]["nota"] = "Evento finalizado por término de video"
-            self.reporte_eventos.append(state_data["current_event"])
+        for p_id, state_info in self.states_history.items():
+            if state_info["state"] == "EVENTO" and state_info["current_event"]:
+                state_info["current_event"]["fin_segundo"] = round(frame_idx/fps, 2)
+                state_info["current_event"]["duracion_total"] = round((frame_idx/fps) - state_info["current_event"]["inicio_segundo"], 2)
+                state_info["current_event"]["nota"] = "Evento finalizado por término de video"
+                self.reporte_eventos.append(state_info["current_event"])
 
         cap.release()
         if event_clip: event_clip.release()
@@ -480,8 +566,9 @@ class VideoProcessorThread(threading.Thread):
         writer_async.stop()
         writer_async.join() 
         
+        eventos_finales = consolidar_eventos(self.reporte_eventos)
         with open(self.output_json, "w", encoding="utf-8") as f:
-            json.dump(self.reporte_eventos, f, indent=4)
+            json.dump(eventos_finales, f, indent=4)
             
         self.is_finished = True
 
@@ -492,7 +579,6 @@ class CameraBufferCleaner:
         self.ret, self.frame = self.cap.read()
         self.running = True
         self.lock = threading.Lock()
-        # Hilo dedicado única y exclusivamente a vaciar el buffer de red a máxima velocidad
         self.thread = threading.Thread(target=self._update, daemon=True)
         self.thread.start()
 
@@ -542,12 +628,11 @@ class LiveProcessorThread(threading.Thread):
         v_height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
 
         buffers = defaultdict(lambda: deque(maxlen=WINDOW_SIZE))
-        state_data = {"state": "NEUTRAL", "event_label": None, "event_counter": 0, "end_counter": 0, "current_event": None}
+        self.states_history = {} 
         video_name = "live_stream"
         event_clip = None 
         frame_idx = 0
 
-        # Pre-crear el archivo vacío para evitar que el frontend dé error 404
         with open(self.output_json, "w", encoding="utf-8") as f:
             json.dump([], f)
 
@@ -556,58 +641,45 @@ class LiveProcessorThread(threading.Thread):
             if not ret: break
             frame_idx += 1
 
-            was_in_event = (state_data["state"] == "EVENTO")
-
-            frame_proc, state_data, self.reporte_eventos, event_clip = procesar_eventos(
-                frame, fps, frame_idx, buffers, state_data, device, lstm_model, id2label, 
+            frame_proc, self.states_history, self.reporte_eventos, event_clip = procesar_eventos(
+                frame, fps, frame_idx, buffers, self.states_history, device, lstm_model, id2label, 
                 self.reporte_eventos, video_name, event_clip, v_width, v_height, self.mode
             )
 
-            is_in_event = (state_data["state"] == "EVENTO")
+            active_detections = list(set([info["event_label"] for info in self.states_history.values() if info["state"] == "EVENTO"]))
             now = datetime.now()
 
-            # EVENTO INICIADO
-            if not was_in_event and is_in_event:
-                state_data["current_event"]["hora_inicio"] = now.strftime("%H:%M:%S")
-                state_data["current_event"]["fecha_inicio"] = now.strftime("%Y-%m-%d")
-                
-            # EVENTO TERMINADO
-            elif was_in_event and not is_in_event:
-                if self.reporte_eventos:
-                    self.reporte_eventos[-1]["hora_fin"] = now.strftime("%H:%M:%S")
-                    self.reporte_eventos[-1]["fecha_fin"] = now.strftime("%Y-%m-%d")
-
-            # REPORTE EN TIEMPO REAL
             reporte_actual = list(self.reporte_eventos)
-            if is_in_event and state_data["current_event"]:
-                temp_event = dict(state_data["current_event"])
-                temp_event["fin_segundo"] = round(frame_idx/fps, 2)
-                temp_event["hora_fin"] = now.strftime("%H:%M:%S")
-                temp_event["fecha_fin"] = now.strftime("%Y-%m-%d")
-                temp_event["duracion_total"] = round(temp_event["fin_segundo"] - temp_event.get("inicio_segundo", 0), 2)
-                reporte_actual.append(temp_event)
+            for p_id, state_info in self.states_history.items():
+                if state_info["state"] == "EVENTO" and state_info["current_event"]:
+                    temp_event = dict(state_info["current_event"])
+                    temp_event["fin_segundo"] = round(frame_idx/fps, 2)
+                    temp_event["hora_fin"] = now.strftime("%H:%M:%S")
+                    temp_event["fecha_fin"] = now.strftime("%Y-%m-%d")
+                    temp_event["duracion_total"] = round(temp_event["fin_segundo"] - temp_event.get("inicio_segundo", 0), 2)
+                    reporte_actual.append(temp_event)
 
             with open(self.output_json, "w", encoding="utf-8") as f:
-                json.dump(reporte_actual, f, indent=4)
+                json.dump(consolidar_eventos(reporte_actual), f, indent=4)
 
             preview = cv.resize(frame_proc, (640, int(640 * (v_height/v_width)))) if v_width > 0 else frame_proc
             with self.data_lock:
                 self.latest_data = {
                     "frame": preview,
-                    "detections": [state_data["event_label"]] if state_data["state"] == "EVENTO" else []
+                    "detections": active_detections 
                 }
 
-        # Cierre definitivo al apagar la cámara
-        if state_data["state"] == "EVENTO" and state_data["current_event"]:
-            state_data["current_event"]["fin_segundo"] = round(frame_idx/fps, 2)
-            state_data["current_event"]["duracion_total"] = round((frame_idx/fps) - state_data["current_event"]["inicio_segundo"], 2)
-            state_data["current_event"]["hora_fin"] = datetime.now().strftime("%H:%M:%S")
-            state_data["current_event"]["fecha_fin"] = datetime.now().strftime("%Y-%m-%d")
-            state_data["current_event"]["nota"] = "Evento finalizado por detención de cámara"
-            self.reporte_eventos.append(state_data["current_event"])
+        for p_id, state_info in self.states_history.items():
+            if state_info["state"] == "EVENTO" and state_info["current_event"]:
+                state_info["current_event"]["fin_segundo"] = round(frame_idx/fps, 2)
+                state_info["current_event"]["duracion_total"] = round((frame_idx/fps) - state_info["current_event"]["inicio_segundo"], 2)
+                state_info["current_event"]["hora_fin"] = datetime.now().strftime("%H:%M:%S")
+                state_info["current_event"]["fecha_fin"] = datetime.now().strftime("%Y-%m-%d")
+                state_info["current_event"]["nota"] = "Evento finalizado por detención de cámara"
+                self.reporte_eventos.append(state_info["current_event"])
 
         with open(self.output_json, "w", encoding="utf-8") as f:
-            json.dump(self.reporte_eventos, f, indent=4)
+            json.dump(consolidar_eventos(self.reporte_eventos), f, indent=4)
 
         if event_clip: event_clip.release()
         cap.release()
@@ -649,7 +721,6 @@ def evaluate_final(filename, mode):
             else:
                 time.sleep(0.05) 
 
-        # Envío final asegurado
         yield f"data: {json.dumps({'progress': 100, 'frame': None, 'detections': []})}\n\n"
         yield "data: EOF\n\n"
 
@@ -706,13 +777,10 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['RESULT_FOLDER'] = 'Tesis/src/static/videos/results'
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max upload
 
-# Inicializar el modulo de detección de poses
 detector = poseDetector()
 detecciones_guardadas = []
 detecciones_guardadas_lstm = []
 
-# region RENDER_VIEWS_ROUTES
-# ROUTES
 @app.route('/')
 def index():
     return redirect(url_for('login'))
@@ -826,9 +894,7 @@ def process_video_lstm(filename):
 
     return {"status": "ok", "video": f"processed_{filename.replace('.mp4','.webm')}", "results": f"results_{filename.replace('.mp4','.json')}"}
 
-# -----------------------------
-# Estado + URLs de resultados
-# -----------------------------
+
 @app.route('/results-video-lstm/<filename>', methods=['GET'])
 def results_video_lstm(filename):
     output_video = os.path.join(app.config['RESULT_FOLDER'], f"processed_{filename.replace('.mp4','_out.mp4')}")
@@ -853,9 +919,7 @@ def results_video_lstm(filename):
         "detections": json.load(open(output_json))
     }
 
-# -----------------------------
-# Video procesado (descarga directa)
-# -----------------------------
+
 @app.route('/processed-video-lstm/<filename>', methods=['GET'])
 def processed_video_lstm(filename):
     output_path = os.path.join(app.config['RESULT_FOLDER'], f"processed_{filename.replace('.mp4','_out.mp4')}")
@@ -865,13 +929,13 @@ def processed_video_lstm(filename):
 
 from collections import defaultdict, deque
 
-# Parámetro configurable
+
 def procesar_frame(frame, fps, frame_idx, buffers, window_size=32):
     results = pose_model.track(frame, persist=True, verbose=False, tracker="bytetrack.yaml")
     r0 = results[0]
 
     registro = {"behaviors": ["NEUTRAL"], "frame_idx": frame_idx, "prob": 0.0}
-    color_final = (0, 255, 0)  # Verde por defecto
+    color_final = (0, 255, 0)  
 
     if r0.boxes is not None and r0.boxes.id is not None:
         ids = r0.boxes.id.cpu().numpy().astype(int)
@@ -887,7 +951,6 @@ def procesar_frame(frame, fps, frame_idx, buffers, window_size=32):
             if len(buffers[pid]) < window_size:
                 continue
 
-            # Preprocesamiento
             seq = np.stack(buffers[pid]).astype(np.float32)
             seq -= seq[:, 0:1, :]
             max_d = np.linalg.norm(seq.reshape(seq.shape[0], -1), axis=1).max()
@@ -904,7 +967,6 @@ def procesar_frame(frame, fps, frame_idx, buffers, window_size=32):
             pred_id = int(np.argmax(probs))
             pred_label, prob = id2label[pred_id], probs[pred_id]
 
-            # --- Clasificación con umbrales ---
             if pred_label == "PELEAR" and prob >= TH_PELEAR:
                 color_final = (0, 0, 255)  # Rojo
                 registro = {"behaviors": ["PELEAR"], "frame_idx": frame_idx, "prob": float(prob)}
@@ -1100,14 +1162,12 @@ def saveImageData():
         final_path = local_path + '\\Imagen'
         print('ruta final:', final_path)
 
-        # si la ruta Imagen no existe la crea
         if not os.path.exists(final_path):
             os.makedirs(final_path)
 
         # obtener archivos totales
         total = get_total_files(final_path)
 
-        # nuevo formato de nombre  000001
         name, ext = os.path.splitext(file_name)
         name_to_save = f"{total}{ext}"
 
@@ -1146,7 +1206,6 @@ def saveImageData():
         image_file_path = os.path.join(final_path, name_to_save)
         path_base_image = os.path.join(UPLOAD_FOLDER, f"points_{file_name}")
 
-        # Crear o copiar la imagen con el nombre indicado
         copyfile(path_base_image, image_file_path)  
 
         delete_temp_image(UPLOAD_FOLDER)
@@ -1652,7 +1711,7 @@ def upload_image_from_video():
                 elif original_height > original_width:
                     final_width, final_height = width, height
                 else:
-                    final_width = final_height = min(width, height) if width and height else 300  # Valor por defecto
+                    final_width = final_height = min(width, height) if width and height else 300  
 
                 resized_img = image.resize((final_width, final_height))
                 resized_image_name = 'resized_' + filename
@@ -1712,13 +1771,11 @@ def save_image_from_video():
         if not os.path.exists(final_path):
             os.makedirs(final_path)
 
-        # obtener archivos totales
         total = get_total_files(final_path)
 
         name, ext = os.path.splitext(file_name)
         name_to_save = f"{total}{ext}"
 
-        # Guardar el JSON con los puntos
         json_file_name = "Points_Json.json"
         path_json = os.path.join(local_path, json_file_name)
 
@@ -1752,7 +1809,6 @@ def save_image_from_video():
         image_file_path = os.path.join(final_path, name_to_save)
         path_base_image = os.path.join(UPLOAD_FOLDER, file_name)
 
-        # Crear o copiar la imagen con el nombre indicado
         copyfile(path_base_image, image_file_path)  
 
         delete_temp_image(UPLOAD_FOLDER)
@@ -1768,8 +1824,8 @@ def validate_frame_exists(id_user):
             query = "SELECT COUNT(*) FROM parametrizador_fps WHERE id_user = %s"
             params = (id_user,)
             cursor.execute(query, params)
-            count = cursor.fetchone()[0]  # Obtener el resultado de la consulta
-            print(count)  # Imprimir el resultado
+            count = cursor.fetchone()[0]  
+            print(count)  
             return count
 
 
@@ -1922,7 +1978,6 @@ def stream_frames_lstm(filename, skip, dimension):
     output_json  = os.path.join(app.config['RESULT_FOLDER'], f"results_{filename.replace('.mp4','.json')}")
     status_json  = os.path.join(app.config['RESULT_FOLDER'], f"status_{filename.replace('.mp4','.json')}")
 
-    # Estado inicial
     with open(status_json, "w") as f:
         json.dump({"status": "processing"}, f)
 
@@ -1990,7 +2045,6 @@ def stream_frames(filename, frame_skip, dimension):
     if os.path.exists(os.path.join(file_path, 'Processeds', 'Processed' + filename)):
         os.remove(os.path.join(file_path,'Processeds', 'Processed' + filename))
 
-    # Procesar el video
     output_path = os.path.join(file_path, 'Processeds', 'Processed' + os.path.splitext(filename)[0] + '.webm')
 
     def generar():
@@ -2048,7 +2102,7 @@ def get_video(filename):
 @app.route('/live-actions')
 def live_actions():
     def generate():
-        cap = cv.VideoCapture(0)  # cámara laptop
+        cap = cv.VideoCapture(0)  
         buffers = defaultdict(lambda: deque(maxlen=WINDOW_SIZE))
         frame_idx = 0
 
@@ -2058,7 +2112,6 @@ def live_actions():
                 break
             frame_idx += 1
 
-            # Procesar frame con tu función existente
             frame, registro = procesar_frame(frame, 30, frame_idx, buffers)
 
             # Codificar imagen a base64

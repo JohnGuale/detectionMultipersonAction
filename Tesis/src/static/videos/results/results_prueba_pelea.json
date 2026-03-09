@@ -1,0 +1,11 @@
+[
+    {
+        "tipo_evento": "PELEAR",
+        "inicio_segundo": 1.28,
+        "precision_maxima": 1.0,
+        "ruta_imagen": "/static/videos/results/prueba_pelea_ev_0_PELEAR_ID106.jpg",
+        "fin_segundo": 19.92,
+        "duracion_total": 18.64,
+        "nota": "Evento finalizado por t\u00e9rmino de video"
+    }
+]

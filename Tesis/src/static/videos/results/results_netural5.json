@@ -1,0 +1,11 @@
+[
+    {
+        "tipo_evento": "PELEAR",
+        "inicio_segundo": 3.93,
+        "precision_maxima": 0.9998747110366821,
+        "ruta_imagen": "/static/videos/results/netural5_ev_0_PELEAR_ID19.jpg",
+        "fin_segundo": 7.57,
+        "duracion_total": 3.64,
+        "nota": "Evento finalizado por t\u00e9rmino de video"
+    }
+]

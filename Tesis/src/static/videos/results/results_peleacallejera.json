@@ -1,0 +1,12 @@
+[
+    {
+        "tipo_evento": "PELEAR",
+        "inicio_segundo": 4.33,
+        "precision_maxima": 0.9999986886978149,
+        "ruta_imagen": "/static/videos/results/peleacallejera_ev_0_PELEAR_ID25.jpg",
+        "hora_inicio": "16:26:56",
+        "fecha_inicio": "2026-03-09",
+        "fin_segundo": 10.53,
+        "duracion_total": 6.2
+    }
+]

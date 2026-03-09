@@ -1,0 +1,10 @@
+[
+    {
+        "tipo_evento": "PELEAR",
+        "inicio_segundo": 1.5,
+        "precision_maxima": 1.0,
+        "ruta_imagen": "/static/videos/results/ufcprueba_FLL5f6wu_ev_0_PELEAR_ID137.jpg",
+        "fin_segundo": 67.27,
+        "duracion_total": 65.77
+    }
+]

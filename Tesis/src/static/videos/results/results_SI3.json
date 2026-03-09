@@ -1,0 +1,13 @@
+[
+    {
+        "tipo_evento": "DISTURBIO",
+        "inicio_segundo": 1.24,
+        "precision_maxima": 1.0,
+        "ruta_imagen": "/static/videos/results/SI3_ev_0_DISTURBIO_ID11.jpg",
+        "hora_inicio": "16:22:06",
+        "fecha_inicio": "2026-03-09",
+        "fin_segundo": 11.44,
+        "duracion_total": 10.2,
+        "nota": "Evento finalizado por t\u00e9rmino de video"
+    }
+]

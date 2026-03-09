@@ -1,0 +1,11 @@
+[
+    {
+        "tipo_evento": "PELEAR",
+        "inicio_segundo": 1.42,
+        "precision_maxima": 1.0,
+        "ruta_imagen": "/static/videos/results/pelear 4_ev_0_PELEAR.jpg",
+        "fin_segundo": 26.03,
+        "duracion_total": 24.61,
+        "nota": "Evento finalizado por t\u00e9rmino de video"
+    }
+]

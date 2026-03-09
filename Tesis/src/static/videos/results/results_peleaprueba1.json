@@ -1,0 +1,18 @@
+[
+    {
+        "tipo_evento": "PELEAR",
+        "inicio_segundo": 1.23,
+        "precision_maxima": 0.9999997615814209,
+        "ruta_imagen": "/static/videos/results/peleaprueba1_ev_0_PELEAR.jpg",
+        "fin_segundo": 13.67,
+        "duracion_total": 12.44
+    },
+    {
+        "tipo_evento": "PELEAR",
+        "inicio_segundo": 14.37,
+        "precision_maxima": 0.9990082383155823,
+        "ruta_imagen": "/static/videos/results/peleaprueba1_ev_1_PELEAR.jpg",
+        "fin_segundo": 15.57,
+        "duracion_total": 1.2
+    }
+]
